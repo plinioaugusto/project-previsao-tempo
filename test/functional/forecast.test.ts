@@ -1,5 +1,5 @@
-describe('Testes funcionais de previsão de praia', () => {
-  it('deve retornar uma previsão com apenas algumas vezes', async () => {
+describe('Testes funcionais de previsão do tempo', () => {
+  it('deve retornar uma previsão do tempo', async () => {
     const { body, status } = await global.testRequest.get('/forecast');
     expect(status).toBe(200);
     expect(body).toEqual([

@@ -1,74 +1,102 @@
 /* eslint-disable @typescript-eslint/ban-types */
+import { InternalError } from '@src/util/errors/internal-error';
 import axios, { AxiosStatic } from 'axios';
+import config, { IConfig } from 'config';
 
 export interface IprevisaoTempoPointSource {
   [key: string]: number;
 }
 export interface IprevisaoTempoPoint {
-  tempo: string;
-  readonly alturaOnda: IprevisaoTempoPointSource;
-  readonly direcaoOnda: IprevisaoTempoPointSource;
-  readonly direcaoSwell: IprevisaoTempoPointSource;
-  readonly alturaSwell: IprevisaoTempoPointSource;
-  readonly periodoSwell: IprevisaoTempoPointSource;
-  readonly direcaoVento: IprevisaoTempoPointSource;
-  readonly velocidadeVento: IprevisaoTempoPointSource;
+  time: string;
+  readonly waveHeight: IprevisaoTempoPointSource;
+  readonly waveDirection: IprevisaoTempoPointSource;
+  readonly swellDirection: IprevisaoTempoPointSource;
+  readonly swellHeight: IprevisaoTempoPointSource;
+  readonly swellPeriod: IprevisaoTempoPointSource;
+  readonly windDirection: IprevisaoTempoPointSource;
+  readonly windSpeed: IprevisaoTempoPointSource;
 }
 export interface IprevisaoTempoResponse {
-  horas: IprevisaoTempoPoint[];
+  hours: IprevisaoTempoPoint[];
 }
 export interface IPontosPrevisao {
-  tempo: string;
-  alturaOnda: number;
-  direcaoOnda: number;
-  direcaoSwell: number;
-  alturaSwell: number;
-  periodoSwell: number;
-  direcaoVento: number;
-  velocidadeVento: number;
+  time: string;
+  waveHeight: number;
+  waveDirection: number;
+  swellDirection: number;
+  swellHeight: number;
+  swellPeriod: number;
+  windDirection: number;
+  windSpeed: number;
 }
 
+export class ClientRequestError extends InternalError {
+  constructor(message: string) {
+    const internalMessage = 'Erro inesperado ao tentar se comunicar com StormGlass';
+
+    super(`${internalMessage}: ${message}`);
+  }
+}
+
+export class StormGlassResponseError extends InternalError {
+  constructor(message: string) {
+    const internalMessage = 'Erro inesperado retornado pelo serviço StormGlass';
+
+    super(`${internalMessage}: ${message}`);
+  }
+}
+
+const previsaoTempoResourceConfig: IConfig = config.get('App.resources.StormGlass');
+
 export class PrevisãoTempo {
-  readonly previsaoAPIParams = 'swellDirection,swellHeight,swellPeriod,waveDirection,waveHeight,windDirection, windSpeed';
-  readonly previsaoAPISource = 'noaa';
+  readonly params = 'swellDirection,swellHeight,swellPeriod,waveDirection,waveHeight,windDirection,windSpeed';
+  readonly source = 'noaa';
 
   constructor(protected request: AxiosStatic = axios) {}
 
-  public async fetchPoints(lat: number, lng: number): Promise<IPontosPrevisao[]> {
-    const response = await this.request.get<IprevisaoTempoResponse>(
-      `https://api.stormglass.io/v2/weather/point?lat=${lat}&lng=${lng}&params=${this.previsaoAPIParams}&source=${this.previsaoAPISource}`,
-      {
-        headers: {
-          Authorization: 'fake-token'
+  public async buscarPontos(lat: number, lng: number): Promise<IPontosPrevisao[]> {
+    try {
+      const response = await this.request.get<IprevisaoTempoResponse>(
+        `${previsaoTempoResourceConfig.get('apiUrl')}/weather/point?lat=${lat}&lng=${lng}&params=${this.params}&source=${this.source}`,
+        {
+          headers: {
+            Authorization: previsaoTempoResourceConfig.get('apiToken')
+          }
         }
+      );
+
+      return this.normalizarResposta(response.data);
+    } catch (err: any) {
+      if (err.response && err.response.status) {
+        throw new StormGlassResponseError(`Error: ${JSON.stringify(err.response.data)} Code: ${err.response.status}`);
       }
-    );
-    return this.normalizarResposta(response.data);
+      throw new ClientRequestError(err.message);
+    }
   }
 
   private normalizarResposta(points: IprevisaoTempoResponse): IPontosPrevisao[] {
-    return points.horas.filter(this.isValidPoint.bind(this)).map((point) => ({
-      direcaoSwell: point.direcaoSwell[this.previsaoAPISource],
-      alturaSwell: point.alturaSwell[this.previsaoAPISource],
-      periodoSwell: point.periodoSwell[this.previsaoAPISource],
-      tempo: point.tempo,
-      direcaoOnda: point.direcaoOnda[this.previsaoAPISource],
-      alturaOnda: point.alturaOnda[this.previsaoAPISource],
-      direcaoVento: point.direcaoVento[this.previsaoAPISource],
-      velocidadeVento: point.velocidadeVento[this.previsaoAPISource]
+    return points.hours.filter(this.isValidPoint.bind(this)).map((point) => ({
+      swellDirection: point.swellDirection[this.source],
+      swellHeight: point.swellHeight[this.source],
+      swellPeriod: point.swellPeriod[this.source],
+      time: point.time,
+      waveDirection: point.waveDirection[this.source],
+      waveHeight: point.waveHeight[this.source],
+      windDirection: point.windDirection[this.source],
+      windSpeed: point.windSpeed[this.source]
     }));
   }
 
-  private isValidPoint(point: Partial<IprevisaoTempoPoint>) {
+  private isValidPoint(point: Partial<IprevisaoTempoPoint>): boolean {
     return !!(
-      point.tempo &&
-      point.direcaoSwell?.[this.previsaoAPISource] &&
-      point.alturaSwell?.[this.previsaoAPISource] &&
-      point.periodoSwell?.[this.previsaoAPISource] &&
-      point.direcaoOnda?.[this.previsaoAPISource] &&
-      point.alturaOnda?.[this.previsaoAPISource] &&
-      point.direcaoVento?.[this.previsaoAPISource] &&
-      point.velocidadeVento?.[this.previsaoAPISource]
+      point.time &&
+      point.swellDirection?.[this.source] &&
+      point.swellHeight?.[this.source] &&
+      point.swellPeriod?.[this.source] &&
+      point.waveDirection?.[this.source] &&
+      point.waveHeight?.[this.source] &&
+      point.windDirection?.[this.source] &&
+      point.windSpeed?.[this.source]
     );
   }
 }

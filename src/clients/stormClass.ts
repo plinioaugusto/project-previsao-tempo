@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-types */
 import { InternalError } from '@src/util/errors/internal-error';
-import axios, { AxiosStatic } from 'axios';
+import * as HTTPUtil from '@src/util/request';
 import config, { IConfig } from 'config';
 
 export interface IprevisaoTempoPointSource {
@@ -52,7 +52,7 @@ export class PrevisãoTempo {
   readonly params = 'swellDirection,swellHeight,swellPeriod,waveDirection,waveHeight,windDirection,windSpeed';
   readonly source = 'noaa';
 
-  constructor(protected request: AxiosStatic = axios) {}
+  constructor(protected request = new HTTPUtil.Request()) {}
 
   public async buscarPontos(lat: number, lng: number): Promise<IPontosPrevisao[]> {
     try {
@@ -67,7 +67,7 @@ export class PrevisãoTempo {
 
       return this.normalizarResposta(response.data);
     } catch (err: any) {
-      if (err.response && err.response.status) {
+      if (HTTPUtil.Request.isRequestError(err)) {
         throw new StormGlassResponseError(`Error: ${JSON.stringify(err.response.data)} Code: ${err.response.status}`);
       }
       throw new ClientRequestError(err.message);
